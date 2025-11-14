@@ -22,7 +22,7 @@ interface SimulatorStartRequest {
 
 interface SimulatorBulkProcessRequest {
   test_tag: string;
-  action: "collect" | "handover" | "deposit" | "reconcile";
+  action: "collect" | "handover" | "deposit" | "reconcile" | "create-bundles";
   batch_size?: number;
 }
 
@@ -281,6 +281,149 @@ serve(async (req) => {
         );
       }
 
+      if (action === "create-bundles") {
+        // Create bundles for collected orders
+        const collectedOrders = orders.filter(
+          (o) =>
+            o.payment_type === "COD" &&
+            o.cod_type !== "RTO" &&
+            o.money_state === "COLLECTED_BY_RIDER" &&
+            !o.bundle_id
+        );
+
+        if (collectedOrders.length === 0) {
+          return new Response(
+            JSON.stringify({
+              success: true,
+              processed: 0,
+              action: "create-bundles",
+              message: "No orders available for bundling",
+            }),
+            {
+              status: 200,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            }
+          );
+        }
+
+        // Group orders by rider
+        const ordersByRider = collectedOrders.reduce((acc, order) => {
+          const riderId = order.rider_id || rider_pool[0];
+          if (!acc[riderId]) acc[riderId] = [];
+          acc[riderId].push(order);
+          return acc;
+        }, {} as Record<string, typeof collectedOrders>);
+
+        let bundlesCreated = 0;
+        const bundleSize = batch_size || 20; // Default 20 orders per bundle
+
+        for (const [riderId, riderOrders] of Object.entries(ordersByRider)) {
+          // Process orders in batches
+          for (let i = 0; i < riderOrders.length; i += bundleSize) {
+            const batch = riderOrders.slice(i, i + bundleSize);
+            const totalAmount = batch.reduce(
+              (sum, o) => sum + Number(o.collected_amount || o.cod_amount || 0),
+              0
+            );
+
+            // Generate denomination breakdown (simplified for testing)
+            const denominationBreakdown: Record<string, number> = {};
+            let remaining = totalAmount;
+            
+            // Use common denominations
+            const denominations = [2000, 500, 200, 100, 50, 20, 10, 5, 2, 1];
+            for (const denom of denominations) {
+              if (remaining >= denom) {
+                const count = Math.floor(remaining / denom);
+                if (count > 0) {
+                  denominationBreakdown[denom.toString()] = count;
+                  remaining = remaining % denom;
+                }
+              }
+            }
+
+            // Create bundle
+            const { data: bundle, error: bundleError } = await supabaseClient
+              .from("rider_bundles")
+              .insert({
+                rider_id: riderId,
+                rider_name: `Rider ${riderId}`,
+                asm_id: asm_pool[Math.floor(Math.random() * asm_pool.length)],
+                expected_amount: totalAmount,
+                denomination_breakdown: denominationBreakdown,
+                status: "CREATED",
+                digital_signoff: true,
+                metadata: { simulator: true, test_tag },
+              })
+              .select()
+              .single();
+
+            if (bundleError || !bundle) {
+              console.error("Bundle creation error:", bundleError);
+              continue;
+            }
+
+            // Link orders to bundle
+            const bundleOrders = batch.map((order) => ({
+              bundle_id: bundle.id,
+              order_id: order.id,
+            }));
+
+            await supabaseClient.from("rider_bundle_orders").insert(bundleOrders);
+
+            // Update orders to BUNDLED state
+            await supabaseClient
+              .from("orders")
+              .update({
+                bundle_id: bundle.id,
+                money_state: "BUNDLED",
+                updated_at: new Date().toISOString(),
+              })
+              .in(
+                "id",
+                batch.map((o) => o.id)
+              );
+
+            // Mark bundle as READY_FOR_HANDOVER
+            await supabaseClient
+              .from("rider_bundles")
+              .update({
+                status: "READY_FOR_HANDOVER",
+                sealed_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", bundle.id);
+
+            // Update orders to READY_FOR_HANDOVER
+            await supabaseClient
+              .from("orders")
+              .update({
+                money_state: "READY_FOR_HANDOVER",
+                updated_at: new Date().toISOString(),
+              })
+              .in(
+                "id",
+                batch.map((o) => o.id)
+              );
+
+            bundlesCreated++;
+          }
+        }
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            processed: bundlesCreated,
+            action: "create-bundles",
+            bundles_created: bundlesCreated,
+          }),
+          {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
       if (action === "deposit") {
         // First, handover orders that are COLLECTED_BY_RIDER
         const ordersToHandover = orders.filter(
@@ -442,6 +585,36 @@ serve(async (req) => {
           .delete()
           .eq("test_tag", test_tag)
           .eq("is_test", true);
+      }
+
+      // Delete bundles and related data
+      const { data: bundles } = await supabaseClient
+        .from("rider_bundles")
+        .select("id")
+        .contains("metadata", { test_tag });
+
+      if (bundles && bundles.length > 0) {
+        const bundleIds = bundles.map((b) => b.id);
+        await supabaseClient
+          .from("rider_bundle_orders")
+          .delete()
+          .in("bundle_id", bundleIds);
+        await supabaseClient.from("rider_bundles").delete().in("id", bundleIds);
+      }
+
+      // Delete superbundles
+      const { data: superbundles } = await supabaseClient
+        .from("asm_superbundles")
+        .select("id")
+        .contains("metadata", { test_tag });
+
+      if (superbundles && superbundles.length > 0) {
+        const superbundleIds = superbundles.map((sb) => sb.id);
+        await supabaseClient
+          .from("asm_superbundle_bundles")
+          .delete()
+          .in("superbundle_id", superbundleIds);
+        await supabaseClient.from("asm_superbundles").delete().in("id", superbundleIds);
       }
 
       // Delete deposits with test_tag

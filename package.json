@@ -9,7 +9,8 @@
     "test:unit": "cd frontend && npm run test",
     "test:e2e": "cd frontend && npm run test:e2e",
     "lint": "cd frontend && npm run lint",
-    "typecheck": "cd frontend && npm run typecheck"
+    "typecheck": "cd frontend && npm run typecheck",
+    "seed": "ts-node scripts/seed.ts"
   },
   "keywords": [
     "cod",
