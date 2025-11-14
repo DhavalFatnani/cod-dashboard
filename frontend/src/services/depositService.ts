@@ -158,6 +158,74 @@ export const depositService = {
 
     return data.publicUrl
   },
+
+  /**
+   * Create deposit from superbundle(s)
+   */
+  async createDepositFromSuperBundles(
+    superbundleIds: string[],
+    depositNumber: string,
+    depositDate: string,
+    depositSlipFile: File | null,
+    bankAccount: string | null,
+    actualAmountReceived: number | null,
+    smUserId: string
+  ) {
+    const session = await getSession()
+    const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || ''
+    const FUNCTIONS_URL = `${SUPABASE_URL}/functions/v1`
+
+    let depositSlipUrl: string | null = null
+    if (depositSlipFile) {
+      depositSlipUrl = await uploadDepositSlip(depositSlipFile, smUserId)
+    }
+
+    const response = await fetch(`${FUNCTIONS_URL}/sm-superbundle-deposits/create`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        superbundle_ids: superbundleIds,
+        deposit_number: depositNumber,
+        deposit_date: depositDate,
+        deposit_slip_url: depositSlipUrl,
+        bank_account: bankAccount,
+        actual_amount_received: actualAmountReceived,
+      }),
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to create deposit from superbundles')
+    }
+
+    return await response.json()
+  },
+
+  /**
+   * Get deposit detail with linked superbundles
+   */
+  async getDepositDetail(depositId: string) {
+    const session = await getSession()
+    const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || ''
+    const FUNCTIONS_URL = `${SUPABASE_URL}/functions/v1`
+
+    const response = await fetch(`${FUNCTIONS_URL}/sm-superbundle-deposits/deposit/${depositId}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to fetch deposit detail')
+    }
+
+    return await response.json()
+  },
 }
 
 

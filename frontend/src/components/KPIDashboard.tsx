@@ -14,6 +14,7 @@ export default function KPIDashboard({ filters = {}, onFilterChange }: KPIDashbo
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
     cod: false,
     performance: false,
+    bundles: false,
   })
 
   const { data: metrics, isLoading } = useQuery({
@@ -317,6 +318,75 @@ export default function KPIDashboard({ filters = {}, onFilterChange }: KPIDashbo
                     level={4}
                   />
                 </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Bundle Metrics Section */}
+      {metrics.bundles && (
+        <div className="card">
+          <button
+            onClick={() => toggleExpanded('bundles')}
+            className="flex items-center justify-between w-full text-left mb-4"
+          >
+            <div className="flex items-center gap-3">
+              <div className={`p-2 rounded-lg transition-colors ${expanded.bundles ? 'bg-purple-100' : 'bg-gray-100'}`}>
+                {expanded.bundles ? (
+                  <ChevronDown className="w-5 h-5 text-purple-600" />
+                ) : (
+                  <ChevronRight className="w-5 h-5 text-gray-600" />
+                )}
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Bundle Metrics</h3>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  Cash bundling and handover tracking
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-gray-500">
+              <Info className="w-4 h-4" />
+              <span>Click to expand</span>
+            </div>
+          </button>
+
+          {expanded.bundles && (
+            <div className="space-y-6 pt-4 border-t border-gray-200">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <KPICard
+                  label="Rider Unbundled Amount"
+                  value={null}
+                  amount={metrics.bundles.rider_unbundled_amount}
+                  level={2}
+                  highlight={metrics.bundles.rider_unbundled_amount > 50000 ? 'warning' : undefined}
+                />
+                <KPICard
+                  label="Rider Bundled Amount"
+                  value={null}
+                  amount={metrics.bundles.rider_bundled_amount}
+                  level={2}
+                />
+                <KPICard
+                  label="Bundles Pending Handover"
+                  value={metrics.bundles.bundles_pending_handover?.count || 0}
+                  amount={metrics.bundles.bundles_pending_handover?.amount || 0}
+                  level={2}
+                />
+                <KPICard
+                  label="SuperBundles Pending SM Handover"
+                  value={metrics.bundles.superbundles_pending_sm_handover?.count || 0}
+                  amount={metrics.bundles.superbundles_pending_sm_handover?.amount || 0}
+                  level={2}
+                />
+                <KPICard
+                  label="SLA Violations (>60 min)"
+                  value={metrics.bundles.sla_violations?.count || 0}
+                  amount={metrics.bundles.sla_violations?.amount || 0}
+                  level={2}
+                  highlight={(metrics.bundles.sla_violations?.count || 0) > 0 ? 'error' : undefined}
+                />
               </div>
             </div>
           )}
