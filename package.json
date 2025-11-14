@@ -1,0 +1,29 @@
+{
+  "name": "cod-dashboard",
+  "version": "1.0.0",
+  "description": "COD Management Dashboard with Supabase backend and React frontend",
+  "scripts": {
+    "dev": "cd frontend && npm run dev",
+    "build": "cd frontend && npm run build",
+    "test": "npm run test:unit && npm run test:e2e",
+    "test:unit": "cd frontend && npm run test",
+    "test:e2e": "cd frontend && npm run test:e2e",
+    "lint": "cd frontend && npm run lint",
+    "typecheck": "cd frontend && npm run typecheck"
+  },
+  "keywords": [
+    "cod",
+    "dashboard",
+    "supabase",
+    "react"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "ts-node": "^10.9.2"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.80.0"
+  }
+}

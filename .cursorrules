@@ -1,0 +1,137 @@
+# COD Dashboard - Cursor Rules
+
+## Code Organization & Architecture
+
+### Frontend Structure
+- **Stores**: Use Zustand for state management (`useXyzStore` pattern)
+- **Services**: API layer in `/services` (`XyzService.ts`)
+- **Components**: Reusable UI components in `/components`
+- **Pages**: Route-level components in `/pages`
+- **Hooks**: Custom React hooks in `/hooks` (`useXyz` pattern)
+- **Utils**: Pure utility functions in `/utils`
+
+### Naming Conventions
+- **Components**: PascalCase (`KPIDashboard.tsx`)
+- **Hooks**: camelCase with `use` prefix (`useRealtimeKPIs.ts`)
+- **Services**: camelCase (`ordersService.ts`)
+- **Stores**: camelCase with `Store` suffix (`authStore.ts`)
+- **Types**: PascalCase interfaces/types (`Order`, `KPIMetrics`)
+
+### Backend Structure
+- **Edge Functions**: TypeScript functions in `/supabase/functions`
+- **Migrations**: SQL migrations in `/supabase/migrations`
+- **Database**: Use Supabase Postgres with RLS policies
+
+## Performance Optimization
+
+### Query Optimization
+- Use React Query for caching and automatic refetching
+- Set `staleTime: 30000` (30 seconds) for KPI queries
+- Use `refetchInterval` for realtime feel (5 seconds for KPIs)
+- Batch Supabase queries when possible
+- Use indexed columns for filtering (payment_type, money_state, etc.)
+
+### Realtime Subscriptions
+- Subscribe to specific tables/events, not all changes
+- Unsubscribe in useEffect cleanup
+- Use Supabase Realtime for order/KPI updates
+- Debounce filter changes (300ms) to avoid excessive queries
+
+### Rendering Optimization
+- Lazy load components with React.lazy() for routes
+- Use React.memo() for expensive components
+- Debounce search inputs (300ms)
+- Paginate large lists (50 items per page)
+- Virtualize long lists if needed
+
+### API Performance
+- All Edge Functions must be idempotent
+- Use transactions for multi-step operations
+- Batch inserts (100 items per batch)
+- Use database functions for complex aggregations (`get_kpi_metrics`)
+
+## Code Quality
+
+### TypeScript
+- Strict mode enabled
+- No `any` types - use proper types or `unknown`
+- Define interfaces for all data structures
+- Use type guards for runtime validation
+
+### Error Handling
+- Always handle errors in try-catch blocks
+- Show user-friendly error messages
+- Log errors for debugging
+- Use React Query error states
+
+### Testing
+- Unit tests for utilities and services
+- Integration tests for API endpoints
+- E2E tests for critical user flows
+- Mock Supabase client in tests
+
+## Supabase Best Practices
+
+### RLS Policies
+- Always enable RLS on tables
+- Use role-based access control
+- Test policies with different user roles
+- Use SECURITY DEFINER functions sparingly
+
+### Database Functions
+- Use functions for complex queries (KPIs)
+- Index frequently queried columns
+- Use composite indexes for multi-column filters
+- Avoid N+1 queries
+
+### Edge Functions
+- Handle CORS properly
+- Validate all inputs
+- Use service role key for admin operations
+- Return proper HTTP status codes
+- Log important events
+
+## Frontend Patterns
+
+### State Management
+- Use Zustand for global state (auth, user profile)
+- Use React Query for server state
+- Use local state for UI state (modals, forms)
+- Avoid prop drilling - use stores/hooks
+
+### Component Patterns
+- Keep components small and focused
+- Extract reusable logic to hooks
+- Use composition over inheritance
+- Prefer function components with hooks
+
+### Styling
+- Use Tailwind CSS utility classes
+- Create reusable component classes in `index.css`
+- Use consistent spacing scale
+- Follow mobile-first responsive design
+
+## Performance Targets
+
+- **Dashboard Load**: ≤ 250ms
+- **KPI Refresh**: ≤ 100ms (cached)
+- **Realtime Update Latency**: < 1s
+- **Simulator Bulk Create**: ≥ 1000 orders/run
+- **Order Table Pagination**: < 100ms per page
+
+## Security
+
+- Never expose service role key in frontend
+- Validate all user inputs
+- Use RLS for data access control
+- Sanitize user-generated content
+- Rate limit API endpoints
+
+## Documentation
+
+- Document all public APIs
+- Add JSDoc comments for complex functions
+- Keep README updated
+- Document environment variables
+- Include architecture diagrams
+

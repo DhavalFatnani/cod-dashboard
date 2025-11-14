@@ -1,0 +1,30 @@
+# Documentation - Cursor Rules
+
+## Documentation Standards
+
+### File Structure
+- `ARCHITECTURE.md` - System architecture and design decisions
+- `API.md` - API endpoint documentation
+- `RUN_LOCALLY.md` - Local development setup
+- `CLEANUP.md` - Data cleanup procedures
+- `DEPLOYMENT.md` - Deployment guide
+
+### Markdown Format
+- Use clear headings (H1 for title, H2 for sections)
+- Include code examples with syntax highlighting
+- Add diagrams for complex flows
+- Keep lines under 100 characters
+- Use tables for structured data
+
+### Code Examples
+- Always include working examples
+- Show both request and response
+- Include error cases
+- Add environment variable examples
+
+### Keeping Docs Updated
+- Update docs when changing APIs
+- Update setup instructions when dependencies change
+- Add troubleshooting sections for common issues
+- Include version numbers for dependencies
+

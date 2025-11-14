@@ -1,0 +1,116 @@
+# Supabase Backend - Cursor Rules
+
+## Edge Functions
+
+### Structure
+```typescript
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+}
+
+serve(async (req) => {
+  // Handle OPTIONS
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders })
+  }
+  
+  // Validate auth
+  // Process request
+  // Return response
+})
+```
+
+### Best Practices
+- Always handle CORS
+- Validate all inputs
+- Use service role key for admin operations
+- Return proper HTTP status codes
+- Handle errors gracefully
+- Make operations idempotent
+- Use transactions for multi-step operations
+
+### Error Handling
+```typescript
+try {
+  // Operation
+} catch (error) {
+  return new Response(
+    JSON.stringify({ error: error.message }),
+    { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  )
+}
+```
+
+## Database Functions
+
+### Performance
+- Use indexes on frequently queried columns
+- Create composite indexes for multi-column filters
+- Use materialized views for complex aggregations if needed
+- Avoid N+1 queries - use JOINs or batch queries
+
+### RLS Policies
+- Always enable RLS
+- Test policies with different roles
+- Use SECURITY DEFINER sparingly
+- Document policy logic
+
+### Migrations
+- One migration per logical change
+- Include rollback instructions in comments
+- Test migrations on staging first
+- Use transactions for data migrations
+
+## SQL Patterns
+
+### Query Optimization
+```sql
+-- Use indexes
+CREATE INDEX idx_orders_payment_type ON orders(payment_type);
+
+-- Use composite indexes for common filters
+CREATE INDEX idx_orders_composite ON orders(payment_type, cod_type, money_state);
+
+-- Use functions for complex aggregations
+CREATE OR REPLACE FUNCTION get_kpi_metrics(...)
+RETURNS JSONB AS $$
+  -- Optimized query
+$$ LANGUAGE plpgsql;
+```
+
+### Idempotency
+- Check for existing records before insert
+- Use UPSERT for updates
+- Use unique constraints
+- Return existing data if already exists
+
+## Security
+
+### Authentication
+- Verify JWT tokens in Edge Functions
+- Check user roles before admin operations
+- Use RLS for data access control
+
+### Input Validation
+- Validate all inputs
+- Sanitize user-generated content
+- Use parameterized queries (Supabase handles this)
+- Rate limit endpoints
+
+## Testing
+
+### Edge Functions
+- Test with different user roles
+- Test error cases
+- Test idempotency
+- Mock Supabase client in tests
+
+### Database Functions
+- Test with sample data
+- Test edge cases (empty results, null values)
+- Test performance with large datasets
+

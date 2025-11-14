@@ -1,0 +1,111 @@
+# Frontend - Cursor Rules
+
+## React & TypeScript
+
+### Component Structure
+```typescript
+// Component file structure
+import React from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { ComponentProps } from './types'
+
+export function ComponentName({ prop1, prop2 }: ComponentProps) {
+  // Hooks first
+  const { data } = useQuery(...)
+  
+  // Event handlers
+  const handleClick = () => {}
+  
+  // Render
+  return <div>...</div>
+}
+```
+
+### Hooks Order
+1. State hooks (`useState`, `useReducer`)
+2. Query hooks (`useQuery`, `useMutation`)
+3. Effect hooks (`useEffect`)
+4. Custom hooks
+5. Memoized values (`useMemo`, `useCallback`)
+
+### Service Layer Pattern
+```typescript
+// services/xyzService.ts
+export const xyzService = {
+  async getItems(filters: Filters) {
+    const { data, error } = await supabase
+      .from('table')
+      .select('*')
+      .match(filters)
+    
+    if (error) throw error
+    return data
+  },
+}
+```
+
+### Query Patterns
+- Use React Query for all server state
+- Set appropriate `staleTime` and `cacheTime`
+- Use `queryKey` arrays for proper invalidation
+- Prefetch data when possible
+
+### Error Boundaries
+- Wrap routes in error boundaries
+- Show fallback UI for errors
+- Log errors to monitoring service
+
+## Performance
+
+### Optimization Checklist
+- [ ] Memoize expensive computations (`useMemo`)
+- [ ] Memoize callbacks passed to children (`useCallback`)
+- [ ] Use React.memo for pure components
+- [ ] Lazy load routes with `React.lazy()`
+- [ ] Debounce search/filter inputs
+- [ ] Paginate large lists
+- [ ] Virtualize very long lists (>1000 items)
+
+### Realtime Updates
+- Subscribe only to necessary tables
+- Unsubscribe in cleanup
+- Debounce rapid updates
+- Use React Query invalidation for refetch
+
+### Bundle Size
+- Use dynamic imports for large libraries
+- Tree-shake unused code
+- Analyze bundle with `vite-bundle-visualizer`
+
+## Styling
+
+### Tailwind Patterns
+- Use utility classes, not custom CSS
+- Create reusable component classes in `index.css`
+- Use consistent spacing scale (4px base)
+- Follow mobile-first breakpoints
+
+### Component Classes
+```css
+.btn-primary {
+  @apply px-4 py-2 bg-primary-600 text-white rounded-lg;
+}
+```
+
+## Testing
+
+### Unit Tests
+- Test utilities and pure functions
+- Mock Supabase client
+- Test error cases
+
+### Component Tests
+- Test user interactions
+- Test loading/error states
+- Use React Testing Library
+
+### E2E Tests
+- Test critical user flows
+- Test authentication flows
+- Test realtime updates
+
