@@ -14,6 +14,8 @@ import {
   AlertTriangle,
   AlertCircle,
   Download,
+  Package,
+  Plus,
 } from 'lucide-react'
 import { OrderCollectionReasonModal } from '../components/OrderCollectionReasonModal'
 import { ASMHandoverSummary } from '../components/ASMHandoverSummary'
@@ -21,6 +23,11 @@ import { read, utils } from 'xlsx'
 import { ContextualGuidance } from '../components/ContextualGuidance'
 import { ActionWizard, WizardStep } from '../components/ActionWizard'
 import { Link } from 'react-router-dom'
+import { RiderSummaryCards } from '../components/RiderSummaryCards'
+import { BundledOrdersPanel } from '../components/BundledOrdersPanel'
+import { UnbundledOrdersTable } from '../components/UnbundledOrdersTable'
+import { CreateSuperBundleDrawer } from '../components/CreateSuperBundleDrawer'
+import { bundleService } from '../services/bundleService'
 
 export default function ASMHandover() {
   const { profile, loading: profileLoading } = useUserStore()
@@ -32,6 +39,8 @@ export default function ASMHandover() {
   const [showExportMenu, setShowExportMenu] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const exportMenuRef = useRef<HTMLDivElement>(null)
+  const [selectedRiderId, setSelectedRiderId] = useState<string | null>(null)
+  const [showSuperBundleDrawer, setShowSuperBundleDrawer] = useState(false)
 
   // Fetch orders for ASM Handover
   // Show COD Hard Cash orders in: UNCOLLECTED, COLLECTED_BY_RIDER, and HANDOVER_TO_ASM states
@@ -475,6 +484,14 @@ export default function ASMHandover() {
     )
   }
 
+  // Get accepted bundles for superbundle creation
+  const { data: acceptedBundles = [] } = useQuery({
+    queryKey: ['bundles', profile?.asm_id, 'HANDEDOVER_TO_ASM'],
+    queryFn: () => bundleService.getBundles(profile?.asm_id || '', 'HANDEDOVER_TO_ASM'),
+    enabled: !!profile?.asm_id,
+    refetchInterval: 5000,
+  })
+
   // Group orders by state and collection status
   const uncollectedOrders = orders.filter((o) => o.money_state === 'UNCOLLECTED')
   const withRiderOrders = orders.filter((o) => o.money_state === 'COLLECTED_BY_RIDER')
@@ -493,6 +510,11 @@ export default function ASMHandover() {
   const readyToHandoverAmount = withRiderOrders
     .filter((o) => !o.asm_non_collected_reason)
     .reduce((sum, o) => sum + Number(o.cod_amount || 0), 0)
+
+  // Filter orders by selected rider
+  const filteredOrders = selectedRiderId
+    ? orders.filter((o) => o.rider_id === selectedRiderId)
+    : orders
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
@@ -579,9 +601,60 @@ export default function ASMHandover() {
         </div>
       </div>
 
+      {/* Rider Summary Cards Section */}
+      {profile?.asm_id && (
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold text-gray-900">
+              Rider Summary
+            </h2>
+            {acceptedBundles.length > 0 && (
+              <button
+                onClick={() => setShowSuperBundleDrawer(true)}
+                className="btn btn-primary flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                Create SuperBundle
+              </button>
+            )}
+          </div>
+          <RiderSummaryCards
+            asmId={profile.asm_id}
+            selectedRiderId={selectedRiderId}
+            onRiderClick={(riderId) =>
+              setSelectedRiderId(selectedRiderId === riderId ? null : riderId)
+            }
+          />
+        </div>
+      )}
+
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 lg:gap-8">
         {/* Main Content - Left Column */}
         <div className="xl:col-span-2 space-y-6">
+          {/* Bundled Orders Panel */}
+          {profile?.asm_id && (
+            <BundledOrdersPanel
+              asmId={profile.asm_id}
+              onBundleAction={() => {
+                queryClient.invalidateQueries({ queryKey: ['bundles'] })
+                queryClient.invalidateQueries({ queryKey: ['rider-summaries'] })
+              }}
+            />
+          )}
+
+          {/* Unbundled Orders Table */}
+          {profile?.asm_id && (
+            <UnbundledOrdersTable
+              asmId={profile.asm_id}
+              riderId={selectedRiderId}
+              onRequestJustification={() => {
+                queryClient.invalidateQueries({ queryKey: ['unbundled-orders'] })
+              }}
+            />
+          )}
+
+          {/* Legacy Orders List (keep for backward compatibility) */}
+          <div className="space-y-6">
           {/* Bulk Upload Section */}
           <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6">
             <div className="flex items-start gap-4 mb-5">
@@ -923,6 +996,16 @@ export default function ASMHandover() {
             setSelectedOrderId(null)
           }}
           onSubmit={handleReasonSubmit}
+        />
+      )}
+
+      {/* Create SuperBundle Drawer */}
+      {profile?.asm_id && (
+        <CreateSuperBundleDrawer
+          isOpen={showSuperBundleDrawer}
+          onClose={() => setShowSuperBundleDrawer(false)}
+          asmId={profile.asm_id}
+          availableBundles={acceptedBundles}
         />
       )}
     </div>
