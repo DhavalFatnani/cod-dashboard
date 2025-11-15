@@ -17,7 +17,8 @@ interface OrderCollectionData {
 interface DepositRequest {
   asm_id: string;
   asm_name?: string;
-  order_ids: string[] | OrderCollectionData[];
+  order_ids?: string[] | OrderCollectionData[]; // Legacy flow
+  superbundle_ids?: string[]; // New flow
   total_amount: number;
   expected_amount?: number;
   actual_amount_received?: number;
@@ -50,15 +51,28 @@ serve(async (req) => {
 
     const depositData: DepositRequest = await req.json();
 
-    // Validate required fields
+    // Validate required fields - support both legacy (order_ids) and new (superbundle_ids) flows
+    const hasOrderIds = depositData.order_ids && depositData.order_ids.length > 0;
+    const hasSuperBundleIds = depositData.superbundle_ids && depositData.superbundle_ids.length > 0;
+
     if (
       !depositData.asm_id ||
-      !depositData.order_ids ||
-      depositData.order_ids.length === 0 ||
+      (!hasOrderIds && !hasSuperBundleIds) ||
       !depositData.total_amount
     ) {
       return new Response(
-        JSON.stringify({ error: "Missing required fields" }),
+        JSON.stringify({ error: "Missing required fields: either order_ids or superbundle_ids must be provided" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    // Cannot use both flows at once
+    if (hasOrderIds && hasSuperBundleIds) {
+      return new Response(
+        JSON.stringify({ error: "Cannot use both order_ids and superbundle_ids. Use one flow or the other." }),
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -109,71 +123,215 @@ serve(async (req) => {
       throw depositError;
     }
 
-    // Link orders to deposit and create ASM events
-    const depositOrderInserts = [];
-    const asmEventInserts = [];
+    // Handle two flows: legacy (order_ids) or new (superbundle_ids)
+    if (hasSuperBundleIds) {
+      // NEW FLOW: SuperBundle-based deposits
+      // Validate superbundles are in READY_FOR_HANDOVER status
+      const { data: superbundles, error: superbundlesError } = await supabaseClient
+        .from("asm_superbundles")
+        .select("*")
+        .in("id", depositData.superbundle_ids!);
 
-    // Check if order_ids is array of strings or array of OrderCollectionData objects
-    const isExtendedFormat = depositData.order_ids.length > 0 && 
-      typeof depositData.order_ids[0] === 'object' && 
-      'order_id' in depositData.order_ids[0];
+      if (superbundlesError) {
+        throw superbundlesError;
+      }
 
-    for (const orderItem of depositData.order_ids) {
-      const orderId = isExtendedFormat ? (orderItem as OrderCollectionData).order_id : orderItem as string;
-      const collectionData = isExtendedFormat ? orderItem as OrderCollectionData : null;
+      if (!superbundles || superbundles.length !== depositData.superbundle_ids!.length) {
+        return new Response(
+          JSON.stringify({ error: "One or more superbundles not found" }),
+          {
+            status: 404,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
 
-      // Get order details
-      const { data: order } = await supabaseClient
-        .from("orders")
-        .select("id, cod_amount")
-        .eq("id", orderId)
-        .single();
+      // Validate all superbundles are in READY_FOR_HANDOVER status
+      const invalidSuperbundles = superbundles.filter(
+        (sb) => sb.status !== "READY_FOR_HANDOVER"
+      );
+      if (invalidSuperbundles.length > 0) {
+        return new Response(
+          JSON.stringify({ 
+            error: `Superbundles must be in READY_FOR_HANDOVER status. Invalid superbundles: ${invalidSuperbundles.map(sb => sb.superbundle_number || sb.id).join(", ")}` 
+          }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
 
-      if (order) {
-        depositOrderInserts.push({
+      // Verify deposit amount matches superbundle amount
+      const superbundleTotal = superbundles.reduce(
+        (sum, sb) => sum + parseFloat(sb.expected_amount || "0"),
+        0
+      );
+      const tolerance = 0.01;
+      if (Math.abs(depositData.total_amount - superbundleTotal) > tolerance) {
+        return new Response(
+          JSON.stringify({ 
+            error: `Deposit amount (${depositData.total_amount}) does not match superbundle total (${superbundleTotal})` 
+          }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      // Link deposit to superbundles via asm_superbundles.deposit_id
+      const { error: superbundleUpdateError } = await supabaseClient
+        .from("asm_superbundles")
+        .update({
           deposit_id: deposit.id,
-          order_id: order.id,
-          amount: order.cod_amount,
-          collection_status: collectionData?.collection_status || 'COLLECTED',
-          non_collection_reason: collectionData?.non_collection_reason || null,
-          future_collection_date: collectionData?.future_collection_date || null,
-          asm_handover_data_id: depositData.asm_handover_data_id || null,
-        });
+          status: "INCLUDED_IN_DEPOSIT",
+          updated_at: new Date().toISOString(),
+        })
+        .in("id", depositData.superbundle_ids!);
 
-        // Only create DEPOSITED event for collected orders
-        if (!collectionData || collectionData.collection_status === 'COLLECTED') {
-          asmEventInserts.push({
+      if (superbundleUpdateError) {
+        throw superbundleUpdateError;
+      }
+
+      // Get all orders from bundles in these superbundles
+      const { data: superbundleBundles } = await supabaseClient
+        .from("asm_superbundle_bundles")
+        .select("bundle_id")
+        .in("superbundle_id", depositData.superbundle_ids!);
+
+      if (superbundleBundles && superbundleBundles.length > 0) {
+        const bundleIds = superbundleBundles.map((sb) => sb.bundle_id);
+        
+        // Get all orders from these bundles
+        const { data: allOrders } = await supabaseClient
+          .from("orders")
+          .select("id, cod_amount")
+          .in("bundle_id", bundleIds);
+
+        if (allOrders && allOrders.length > 0) {
+          // Create deposit_orders entries
+          const depositOrderInserts = allOrders.map((order) => ({
+            deposit_id: deposit.id,
+            order_id: order.id,
+            amount: order.cod_amount,
+            collection_status: 'COLLECTED',
+            asm_handover_data_id: depositData.asm_handover_data_id || null,
+          }));
+
+          const { error: doError } = await supabaseClient
+            .from("deposit_orders")
+            .insert(depositOrderInserts);
+
+          if (doError) {
+            throw doError;
+          }
+
+          // Create ASM events for DEPOSITED state
+          const asmEventInserts = allOrders.map((order) => ({
             order_id: order.id,
             asm_id: depositData.asm_id,
             asm_name: depositData.asm_name,
             event_type: "DEPOSITED",
             amount: order.cod_amount,
-            notes: `Deposited via ${depositNumber}`,
-            metadata: { deposit_id: deposit.id },
-          });
+            notes: `Deposited via ${depositNumber} (SuperBundle)`,
+            metadata: { 
+              deposit_id: deposit.id,
+              superbundle_ids: depositData.superbundle_ids,
+            },
+          }));
+
+          const { error: aeError } = await supabaseClient
+            .from("asm_events")
+            .insert(asmEventInserts);
+
+          if (aeError) {
+            throw aeError;
+          }
+
+          // Update orders to DEPOSITED state (triggers should handle this, but we ensure it)
+          const orderIds = allOrders.map((o) => o.id);
+          const { error: orderUpdateError } = await supabaseClient
+            .from("orders")
+            .update({
+              money_state: "DEPOSITED",
+              deposited_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .in("id", orderIds);
+
+          if (orderUpdateError) {
+            console.error("Error updating orders:", orderUpdateError);
+          }
         }
       }
-    }
+    } else {
+      // LEGACY FLOW: Order-based deposits
+      const depositOrderInserts = [];
+      const asmEventInserts = [];
 
-    // Insert deposit orders
-    if (depositOrderInserts.length > 0) {
-      const { error: doError } = await supabaseClient
-        .from("deposit_orders")
-        .insert(depositOrderInserts);
+      // Check if order_ids is array of strings or array of OrderCollectionData objects
+      const isExtendedFormat = depositData.order_ids!.length > 0 && 
+        typeof depositData.order_ids![0] === 'object' && 
+        'order_id' in depositData.order_ids![0];
 
-      if (doError) {
-        throw doError;
+      for (const orderItem of depositData.order_ids!) {
+        const orderId = isExtendedFormat ? (orderItem as OrderCollectionData).order_id : orderItem as string;
+        const collectionData = isExtendedFormat ? orderItem as OrderCollectionData : null;
+
+        // Get order details
+        const { data: order } = await supabaseClient
+          .from("orders")
+          .select("id, cod_amount")
+          .eq("id", orderId)
+          .single();
+
+        if (order) {
+          depositOrderInserts.push({
+            deposit_id: deposit.id,
+            order_id: order.id,
+            amount: order.cod_amount,
+            collection_status: collectionData?.collection_status || 'COLLECTED',
+            non_collection_reason: collectionData?.non_collection_reason || null,
+            future_collection_date: collectionData?.future_collection_date || null,
+            asm_handover_data_id: depositData.asm_handover_data_id || null,
+          });
+
+          // Only create DEPOSITED event for collected orders
+          if (!collectionData || collectionData.collection_status === 'COLLECTED') {
+            asmEventInserts.push({
+              order_id: order.id,
+              asm_id: depositData.asm_id,
+              asm_name: depositData.asm_name,
+              event_type: "DEPOSITED",
+              amount: order.cod_amount,
+              notes: `Deposited via ${depositNumber}`,
+              metadata: { deposit_id: deposit.id },
+            });
+          }
+        }
       }
-    }
 
-    // Insert ASM events (triggers will update order states)
-    if (asmEventInserts.length > 0) {
-      const { error: aeError } = await supabaseClient
-        .from("asm_events")
-        .insert(asmEventInserts);
+      // Insert deposit orders
+      if (depositOrderInserts.length > 0) {
+        const { error: doError } = await supabaseClient
+          .from("deposit_orders")
+          .insert(depositOrderInserts);
 
-      if (aeError) {
-        throw aeError;
+        if (doError) {
+          throw doError;
+        }
+      }
+
+      // Insert ASM events (triggers will update order states)
+      if (asmEventInserts.length > 0) {
+        const { error: aeError } = await supabaseClient
+          .from("asm_events")
+          .insert(asmEventInserts);
+
+        if (aeError) {
+          throw aeError;
+        }
       }
     }
 
