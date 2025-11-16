@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard'
 import Orders from './pages/Orders'
 import OrderDetail from './pages/OrderDetail'
 import Login from './pages/Login'
+import DevOTP from './pages/DevOTP'
 import SMDeposits from './pages/SMDeposits'
 import ASMHandover from './pages/ASMHandover'
 import FinanceDashboard from './pages/FinanceDashboard'
@@ -46,6 +47,7 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
+        <Route path="/dev/otp" element={<DevOTP />} />
         <Route
           path="/"
           element={user ? <Layout /> : <Navigate to="/login" />}

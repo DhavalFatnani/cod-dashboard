@@ -1,0 +1,3 @@
+lint = "echo 'No lint for SQL'"
+format = "echo 'No formatter configured for SQL'"
+test = "echo 'No tests for raw SQL'"

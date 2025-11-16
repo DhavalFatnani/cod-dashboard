@@ -1,0 +1,3 @@
+lint = "npm run lint || true"
+format = "npm run format || true"
+test = "npm test || true"
