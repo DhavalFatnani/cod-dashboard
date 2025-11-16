@@ -1,0 +1,3 @@
+lint = "echo 'No lint for infra'"
+format = "echo 'No formatter for infra'"
+test = "echo 'No tests for infra'"

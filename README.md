@@ -155,6 +155,13 @@ cod-dashboard/
 │   ├── API.md
 │   ├── RUN_LOCALLY.md
 │   └── CLEANUP.md
+├── backend/               # Next.js app router (API + OTP auth)
+│   ├── app/api            # Route handlers (REST)
+│   └── src/lib            # Domain libs (errors, idempotency, state)
+├── migrations/
+│   ├── sql/               # SQL-first migrations (001-008, KPIs)
+│   └── scripts/           # apply/dry-run/rollback/seed scripts
+├── infra/                 # Infra placeholders
 └── README.md
 ```
 
